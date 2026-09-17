@@ -4,7 +4,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key='ollama',
-    base_url=''
+    base_url='http://127.0.0.1:11434/v1'
 )
 
 SYSTEM_PROMPT = '''
@@ -61,7 +61,7 @@ def extract_and_run_code(llm_output:str) -> str:
     if start_idx == -1 or end_idx == -1:
         return "Ошибка: Модель не обернула код в теги [CODE]...[/CODE]"
 
-    code = llm_output[start_tag+6:end_idx].strip()
+    code = llm_output[start_idx+6:end_idx].strip()
 
     old_stdout = sys.stdout
     redirected_stdout = io.StringIO()
@@ -76,7 +76,21 @@ def extract_and_run_code(llm_output:str) -> str:
     finally:
         sys.stdout = old_stdout
 
-
 def DA_agent(user_request:str) -> str:
-    pass
+    try:
+        response = client.chat.completions.create(
+            model="qwen2.5-coder:3b",
+            messages=[
+                {'role':'system', 'content': SYSTEM_PROMPT},
+                {'role':'user', 'content': f'Запрос пользователя: {user_request}'}
+            ],
+            temperature=0.1
+        )
+        llm_text = response.choices[0].message.content
+        print('Ответ модели:\n', llm_text)
+        status = extract_and_run_code(llm_text)
+        return status
+    except Exception as e:
+        return f'Ошибка обращения к модели:  {type(e).__name__}: {e}'
+    
 
