@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+#     - OLLAMA_BASE_URL=http://docker.internal
+      - OPENAI_BASE_URL=https://openrouter.ai
+      - OPENAI_API_KEY=
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - BACKEND_HOST=backend
+    depends_on:
+      - backend

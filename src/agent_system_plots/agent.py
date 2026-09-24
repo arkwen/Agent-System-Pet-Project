@@ -1,10 +1,15 @@
 import sys
 import io
+import os
 from openai import OpenAI
+
+#OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", 'http://127.0.0.1:11434/v1')
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://openrouter.ai")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 client = OpenAI(
     api_key='ollama',
-    base_url='http://127.0.0.1:11434/v1'
+    base_url='http://docker.internal'
 )
 
 SYSTEM_PROMPT = '''
@@ -79,7 +84,7 @@ def extract_and_run_code(llm_output:str) -> str:
 def DA_agent(user_request:str) -> str:
     try:
         response = client.chat.completions.create(
-            model="qwen2.5-coder:3b",
+            model="qwen/qwen3.8-27b:free",
             messages=[
                 {'role':'system', 'content': SYSTEM_PROMPT},
                 {'role':'user', 'content': f'Запрос пользователя: {user_request}'}
