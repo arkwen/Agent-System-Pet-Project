@@ -1,24 +1,41 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from .agent import DA_agent
+import io
+import pandas as pd
 
 app = FastAPI(title='AI agent for data analysis')
 
-class DataRequest(BaseModel):
-    prompt: str
-
 @app.post('/generate')
-async def data_analysis(request: DataRequest):
-    result_status = DA_agent(request.prompt)
-    print(f'Статус: {result_status}')
+async def data_analysis(
+    prompt = Form(...),
+    file = File(None)
+):
+    df = None
+    if file is not None:
+        try:
+            contents = await file.read()
+            if file.filename.endswith(".csv"):
+                df = pd.read_csv(io.BytesIO(contents))
+            elif file.filename.endswith((".xlsx", ".xls")):
+                df = pd.read_excel(io.BytesIO(contents))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Ошибка при чтении файла: {e}")
+    
+    result = DA_agent(user_request=prompt, df=df, max_attempts=5)
+    if result.get("status") == "error":
+        raise HTTPException(
+            status_code=500, 
+            detail={
+                "message": result.get("detail", "Агент не смог выполнить запрос"),
+                "trajectory": result.get("trajectory", "")
+            }
+        )
 
-    if "Ошибка" in result_status:
-        raise HTTPException(status_code=500, detail=result_status)
-    
-    image_path = 'output.png'
-    if not os.path.exists(image_path):
-        raise HTTPException(status_code=500, detail="График не был создан")
-    
-    return FileResponse(image_path, media_type='image/png')
+    return JSONResponse(content={
+        "plot": result.get("data"),   
+        "trajectory": result.get("trajectory"),
+        "attempts": result.get("attempts_used")
+    })
