@@ -1,6 +1,7 @@
 import requests
 import streamlit as st
 import os
+import json
 import pandas as pd
 import plotly.io as pio
 
@@ -52,7 +53,7 @@ if st.button('Сгенерировать график', type = "primary"):
                     uploaded_file.seek(0)
                     files = {'file': (uploaded_file.name, uploaded_file.read(), uploaded_file.type)}
                 
-                response = requests.post(backend_url, files = files, json=data)
+                response = requests.post(backend_url, files = files, data=data)
                 
                 if response.status_code == 200:
                     res_json = response.json()

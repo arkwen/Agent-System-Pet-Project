@@ -4,9 +4,12 @@ import os
 from openai import OpenAI
 import json
 import pandas as pd
+from dotenv import load_dotenv
+
+load_dotenv() 
 
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", 'http://127.0.0.1:11434/v1')
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://openrouter.ai")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 if not OPENAI_API_KEY:
@@ -14,7 +17,7 @@ if not OPENAI_API_KEY:
 
 client = OpenAI(
     base_url=OPENAI_BASE_URL,
-    api_key=OPENAI_API_KE
+    api_key=OPENAI_API_KEY
 )
 
 SYSTEM_PROMPT_WITH_FILE = """
@@ -91,7 +94,7 @@ STRICT RULES:
    - DO NOT include any explanations, apologies, or text outside the tags.
 """
 
-def extract_and_run_code(llm_output:str) -> str:
+def extract_and_run_code(llm_output:str, df: pd.DataFrame=None) -> dict:
     start_tag = "[CODE]"
     end_tag = "[/CODE]"
     
@@ -122,14 +125,14 @@ def extract_and_run_code(llm_output:str) -> str:
     finally:
         sys.stdout = old_stdout
 
-def DA_agent(user_request:str) -> str:
+def DA_agent(user_request:str, df: pd.DataFrame = None, max_attempts: int = 5) -> dict:
     if df is not None:
         buffer = io.StringIO()
-        df.info(buf = buffer)
-
+        df.info(buf=buffer)
+        
         data_context = f"""
         Work with provided DataFrame 'df'.
-        Columnes:
+        Columns:
         {buffer.getvalue()}
         First five rows:
         {df.head(5).to_string()}"""
@@ -139,48 +142,50 @@ def DA_agent(user_request:str) -> str:
         data_context = "No file provided. Analyze the request and take data from it or generate synthetic data yourself."
         system_instruction = SYSTEM_PROMPT_NO_FILE
     
-        messages=[
-                    {'role':'system', 'content': SYSTEM_PROMPT},
-                    {'role':'user', 'content': f'User request: {user_request}'}
-                ]
+    messages = [
+        {'role': 'system', 'content': system_instruction},
+        {'role': 'user', 'content': f'{data_context}\n\nUser request: {user_request}'}
+    ]
+    
+    trajectory = []
 
-        trajectory = []
+    for attempt in range(1, max_attempts + 1):
+        trajectory.append(f'Attempt {attempt}')
+        try:
+            response = client.chat.completions.create(
+                model="poolside/laguna-xs-2.1:free",
+                messages=messages,
+                temperature=0.1
+            )
+            #print(f"Type of response: {type(response)}")
+            #print(f"Response: {response}")
+            llm_text = response.choices[0].message.content
+            trajectory.append(f"Model reasoning and output:\n{llm_text}")
+            messages.append({"role": "assistant", "content": llm_text})
 
-        for attempt in range(1, max_attempts + 1):
-            trajectory.append(f'Attempt {attempt}')
-            try:
-                response = client.chat.completions.create(
-                    model="qwen/qwen3.8-27b:free",
-                    messages=messages,
-                    temperature=0.1
-                )
-                llm_text = response.choices[0].message.content
-                trajectory.append(f"Model reasoning and output:\n{llm_text}")
-                messages.append({"role": "assistant", "content": llm_text})
-
-                plotly_data = extract_and_run_code(llm_text, df)
-                trajectory.append("Success: Code executed and Plotly JSON parsed.")
-                return {
-                    "status": "success", 
-                    "data": plotly_data, 
-                    "trajectory": "\n\n".join(trajectory), 
-                    "attempts_used": attempt
-                    }
+            plotly_data = extract_and_run_code(llm_text, df)
+            trajectory.append("Success: Code executed and Plotly JSON parsed.")
+            return {
+                "status": "success", 
+                "data": plotly_data, 
+                "trajectory": "\n\n".join(trajectory), 
+                "attempts_used": attempt
+            }
         
-            except Exception as e:
-                error_message = str(error)
-                trajectory.append(f"Execution error on attempt {attempt}: {error_message}")
-                if attempt == max_attempts:
-                    break
-                trajectory.append("Starting self-correction loop...")
-                messages[0] = {"role": "system", "content": SYSTEM_PROMPT_CORRECTION}
-                messages.append({"role": "user", "content": f"Your previous code failed with this error:\n{error_message}\n\nAnalyze and find root cause and then output the COMPLETE corrected code strictly in [CODE]...[/CODE] tags."})
+        except Exception as e:
+            error_message = str(e)
+            trajectory.append(f"Execution error on attempt {attempt}: {error_message}")
+            if attempt == max_attempts:
+                break
+            trajectory.append("Starting self-correction loop...")
+            messages[0] = {"role": "system", "content": SYSTEM_PROMPT_CORRECTION}
+            messages.append({
+                "role": "user", 
+                "content": f"Your previous code failed with this error:\n{error_message}\n\nAnalyze and find root cause and then output the COMPLETE corrected code strictly in [CODE]...[/CODE] tags."
+            })
             
     return {
-    "status": "error", 
-    "detail": f"Failed to execute request for {max_attempts} attempts.", 
-    "trajectory": "\n\n".join(trajectory)
+        "status": "error", 
+        "detail": f"Failed to execute request for {max_attempts} attempts.", 
+        "trajectory": "\n\n".join(trajectory)
     }
-
-    
-

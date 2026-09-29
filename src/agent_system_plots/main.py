@@ -1,10 +1,12 @@
 import os
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from .agent import DA_agent
 import io
+import json
 import pandas as pd
+
 
 app = FastAPI(title='AI agent for data analysis')
 
@@ -24,7 +26,7 @@ async def data_analysis(
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Ошибка при чтении файла: {e}")
     
-    result = DA_agent(user_request=prompt, df=df, max_attempts=5)
+    result = DA_agent(user_request=prompt, df=df, max_attempts=1)
     if result.get("status") == "error":
         raise HTTPException(
             status_code=500, 
