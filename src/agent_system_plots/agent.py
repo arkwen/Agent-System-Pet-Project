@@ -153,7 +153,7 @@ def DA_agent(user_request:str, df: pd.DataFrame = None, max_attempts: int = 5) -
         trajectory.append(f'Attempt {attempt}')
         try:
             response = client.chat.completions.create(
-                model="poolside/laguna-xs-2.1:free",
+                model="poolside/laguna-xs-2.1:free", #qwen/qwen3.8-27b:free
                 messages=messages,
                 temperature=0.1
             )
